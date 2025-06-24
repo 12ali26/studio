@@ -1,13 +1,22 @@
 import { Header } from '@/components/layout/header'
-import { DebateView } from '@/components/boardroom/debate-view'
+import { EnhancedDebateView } from '@/components/boardroom/enhanced-debate-view'
+import { DebateProvider } from '@/contexts/debate-context'
+import { TestNavigation } from '@/components/layout/test-nav'
 
 export default function BoardroomPage() {
   return (
-    <div className="flex h-screen w-full flex-col">
-      <Header />
-      <main className="flex flex-1 flex-col overflow-hidden">
-        <DebateView />
-      </main>
-    </div>
+    <DebateProvider>
+      <div className="flex h-screen w-full flex-col">
+        <Header />
+        <main className="flex flex-1 flex-col overflow-hidden">
+          <div className="p-4">
+            <TestNavigation />
+          </div>
+          <div className="flex-1 overflow-hidden">
+            <EnhancedDebateView />
+          </div>
+        </main>
+      </div>
+    </DebateProvider>
   )
 }

@@ -1,3 +1,13 @@
+import { redirect } from 'next/navigation'
+
+// Temporarily bypass authentication for development/testing
+export default function HomePage() {
+  // Comment out the auth page and redirect directly to boardroom
+  redirect('/boardroom')
+}
+
+/* 
+// Original Auth Page - Disabled for testing
 import { UserAuthForm } from '@/components/auth/user-auth-form'
 import { BrainCircuit } from 'lucide-react'
 
@@ -62,3 +72,4 @@ export default function AuthenticationPage() {
     </div>
   )
 }
+*/
