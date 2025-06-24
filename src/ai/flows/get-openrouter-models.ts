@@ -16,12 +16,12 @@ const OpenRouterModelSchema = z.object({
   name: z.string(),
   description: z.string(),
   pricing: z.object({
-    prompt: z.string(),
-    completion: z.string(),
-    request: z.string(),
-    image: z.string(),
+    prompt: z.string().nullable(),
+    completion: z.string().nullable(),
+    request: z.string().nullable(),
+    image: z.string().nullable(),
   }),
-  context_length: z.number().optional(),
+  context_length: z.number().nullable().optional(),
   architecture: z.object({
     modality: z.string(),
     tokenizer: z.string().optional(),
@@ -30,7 +30,7 @@ const OpenRouterModelSchema = z.object({
   top_provider: z.object({
     max_completion_tokens: z.number().nullable().optional(),
     is_moderated: z.boolean().optional(),
-  }).optional(),
+  }).nullable().optional(),
   category: z.enum(['Premium', 'Standard', 'Budget']).optional(),
 });
 
@@ -43,7 +43,7 @@ const GetOpenRouterModelsOutputSchema = z.object({
 export type GetOpenRouterModelsOutput = z.infer<typeof GetOpenRouterModelsOutputSchema>;
 
 const classifyModel = (model: OpenRouterModel): OpenRouterModel['category'] => {
-  const promptPrice = parseFloat(model.pricing.prompt) * 1_000_000; // price per 1M tokens
+  const promptPrice = model.pricing.prompt ? parseFloat(model.pricing.prompt) * 1_000_000 : 0;
   if (promptPrice > 5) return 'Premium';
   if (promptPrice > 0.5) return 'Standard';
   return 'Budget';
