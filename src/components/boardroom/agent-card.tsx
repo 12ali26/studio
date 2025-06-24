@@ -63,6 +63,8 @@ export function AgentCard({
             {message.split('\n').map((line, i) => (
               <p key={i} className="mb-2 last:mb-0">{line}</p>
             ))}
+            {/* Blinking cursor effect for streaming messages */}
+            {message.length === 0 && !isUser && <span className="inline-block w-0.5 h-4 bg-foreground animate-pulse ml-1"></span>}
           </div>
         )}
       </div>
