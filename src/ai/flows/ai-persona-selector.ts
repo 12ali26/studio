@@ -17,7 +17,7 @@ const SuggestAIPersonasInputSchema = z.object({
 export type SuggestAIPersonasInput = z.infer<typeof SuggestAIPersonasInputSchema>;
 
 const SuggestAIPersonasOutputSchema = z.object({
-  personas: z.array(z.string()).describe('An array of suggested AI personas.'),
+  personas: z.array(z.string()).describe('An array of suggested AI persona names (e.g., "Alex (CEO)", "Sam (CTO)") from the available list.'),
 });
 export type SuggestAIPersonasOutput = z.infer<typeof SuggestAIPersonasOutputSchema>;
 
@@ -29,11 +29,19 @@ const prompt = ai.definePrompt({
   name: 'suggestAIPersonasPrompt',
   input: {schema: SuggestAIPersonasInputSchema},
   output: {schema: SuggestAIPersonasOutputSchema},
-  prompt: `You are an AI persona suggestion expert. Given a conversation topic or question, you will suggest relevant AI personas to enhance the quality and relevance of the debate.
+  prompt: `You are an expert at assembling a boardroom of AI experts for a debate.
+Given a conversation topic, you must select the three most relevant AI personas from the provided list to ensure a high-quality, multi-faceted discussion.
+
+Available Personas:
+- Alex (CEO): Strategic Visionary. Focuses on growth, market positioning, stakeholder value.
+- Sam (CTO): Technical Leader. Focuses on architecture, scalability, implementation feasibility.
+- Jordan (CMO): Creative Marketer. Focuses on brand positioning, customer experience, innovation.
+- Taylor (CFO): Financial Analyst. Focuses on ROI analysis, risk assessment, budget optimization.
+- Casey (Advisor): Wise Moderator. Focuses on synthesis, ethics, long-term thinking.
 
 Topic: {{{topic}}}
 
-Suggest AI personas:`,
+Return the names of the three most relevant personas.`,
 });
 
 const suggestAIPersonasFlow = ai.defineFlow(

@@ -7,6 +7,7 @@ type AgentCardProps = {
   icon: React.ReactNode
   personaName: string
   message: string
+  personaTitle?: string
   isUser?: boolean
   isLoading?: boolean
 }
@@ -14,6 +15,7 @@ type AgentCardProps = {
 export function AgentCard({
   icon,
   personaName,
+  personaTitle,
   message,
   isUser = false,
   isLoading = false,
@@ -46,11 +48,12 @@ export function AgentCard({
       >
         <div
           className={cn(
-            "flex items-center gap-2 mb-2",
+            "flex items-baseline gap-2 mb-2",
             isUser ? "flex-row-reverse" : "flex-row"
           )}
         >
           <p className="font-bold font-headline text-sm">{personaName}</p>
+          {personaTitle && !isUser && <p className="text-xs text-muted-foreground">{personaTitle}</p>}
         </div>
 
         {isLoading ? (

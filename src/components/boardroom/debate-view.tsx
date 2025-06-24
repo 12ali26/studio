@@ -3,15 +3,9 @@
 import * as React from "react"
 import {
   BrainCircuit,
-  Briefcase,
-  Code,
-  CornerDownLeft,
-  Lightbulb,
   Mic,
   Paperclip,
-  Scale,
   Send,
-  User,
 } from "lucide-react"
 import { Textarea } from "@/components/ui/textarea"
 import { Button } from "@/components/ui/button"
@@ -30,23 +24,14 @@ import { getOpenRouterModels, type OpenRouterModel } from "@/ai/flows/get-openro
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Label } from "@/components/ui/label"
 import { useToast } from "@/hooks/use-toast"
+import { getPersonaByName, userPersona, type Persona } from "@/lib/personas"
 
 type Message = {
   id: string
   role: 'user' | 'assistant'
   content: string
-  persona?: {
-    name: string
-    icon: React.ReactNode
-  }
+  persona: Persona
 }
-
-const aiPersonas = [
-  { name: "Chief Financial Officer", icon: <Briefcase className="h-6 w-6" /> },
-  { name: "Legal Counsel", icon: <Scale className="h-6 w-6" /> },
-  { name: "Tech Lead", icon: <Code className="h-6 w-6" /> },
-  { name: "Marketing Strategist", icon: <Lightbulb className="h-6 w-6" /> },
-]
 
 export function DebateView() {
   const [messages, setMessages] = React.useState<Message[]>([])
@@ -111,15 +96,18 @@ export function DebateView() {
         id: Date.now().toString(),
         role: "user",
         content: topic,
-        persona: { name: "You", icon: <User className="h-6 w-6" /> },
+        persona: userPersona,
       };
       setMessages([userMessage]);
 
       const personaResult = await suggestAIPersonas({ topic });
       const personasToDebate = personaResult.personas
-        .map(personaName => aiPersonas.find(p => personaName.includes(p.name)))
-        .filter((p): p is { name: string; icon: React.ReactNode; } => !!p)
-        .slice(0, 3); // Limit to 3 personas
+        .map(personaName => getPersonaByName(personaName))
+        .filter((p): p is Persona => !!p);
+
+      if (personasToDebate.length === 0) {
+        throw new Error("Could not select relevant AI personas for the topic.");
+      }
 
       let currentHistory: {role: 'user' | 'assistant', content: string}[] = [{ role: 'user', content: topic }];
 
@@ -133,7 +121,8 @@ export function DebateView() {
         };
         setMessages(prev => [...prev, assistantMessage]);
 
-        const systemPrompt = `You are an expert AI debater with the persona of a ${persona.name}. The user wants to explore different viewpoints on the topic: "${topic}". Provide a concise, well-reasoned opening statement from your perspective. Base your response on the conversation so far.`;
+        // Use the detailed prompt from the persona object
+        const systemPrompt = `${persona.prompt} The user's topic is: "${topic}". Base your response on the conversation so far. Provide a concise, well-reasoned opening statement from your perspective.`;
         
         const response = await fetch('/api/generate', {
             method: 'POST',
@@ -149,21 +138,43 @@ export function DebateView() {
 
         if (!response.ok || !response.body) {
           const errorText = response ? await response.text() : 'No response from server';
-          throw new Error(`Failed to get streaming response: ${errorText}`);
+          throw new Error(`API error: ${response.status} ${errorText}`);
         }
 
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
+        let buffer = '';
         let fullResponse = '';
 
         while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            const chunk = decoder.decode(value);
-            fullResponse += chunk;
-            setMessages(prev => prev.map(m => 
-                m.id === assistantId ? { ...m, content: fullResponse } : m
-            ));
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || ''; // Keep the last, possibly incomplete line
+
+          for (const line of lines) {
+            if (line.trim() === '' || !line.startsWith('data:')) continue;
+            
+            const jsonStr = line.replace(/^data: /, '');
+            if (jsonStr === '[DONE]') {
+              break;
+            }
+            
+            try {
+              const chunk = JSON.parse(jsonStr);
+              const content = chunk.choices[0]?.delta?.content || '';
+              if (content) {
+                fullResponse += content;
+                setMessages(prev => prev.map(m => 
+                  m.id === assistantId ? { ...m, content: fullResponse } : m
+                ));
+              }
+            } catch (e) {
+              console.error('Error parsing stream chunk:', jsonStr, e);
+            }
+          }
         }
         currentHistory.push({ role: 'assistant', content: fullResponse });
       }
@@ -213,8 +224,9 @@ export function DebateView() {
             {messages.map((message) => (
               <AgentCard
                 key={message.id}
-                personaName={message.persona?.name || "Agent"}
-                icon={message.persona?.icon || <User />}
+                personaName={message.persona.name}
+                personaTitle={message.persona.title}
+                icon={message.persona.icon}
                 message={message.content}
                 isUser={message.role === "user"}
                 isLoading={isLoading && message.role === 'assistant' && message.content.length === 0}
@@ -241,7 +253,7 @@ export function DebateView() {
                                       <div className="flex items-center justify-between w-full">
                                           <span>{model.name}</span>
                                           <span className="text-xs text-muted-foreground ml-4">
-                                            ${(parseFloat(model.pricing.prompt) * 1000).toFixed(4)}/1k
+                                            {model.pricing.prompt ? `$${(parseFloat(model.pricing.prompt) * 1000).toFixed(4)}/1k` : ''}
                                           </span>
                                       </div>
                                     </SelectItem>
