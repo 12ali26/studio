@@ -1,10 +1,11 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
+import { MessageReactions, useMessageReactions } from './message-reactions';
 import { 
   MessageSender, 
   type ChatMessage as ChatMessageType 
@@ -20,6 +21,8 @@ import {
   X,
   Clock,
   AlertCircle,
+  Heart,
+  Star,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -41,6 +44,21 @@ export function ChatMessage({
   const [isEditing, setIsEditing] = useState(false);
   const [editContent, setEditContent] = useState(message.content);
   const [copied, setCopied] = useState(false);
+  const [isMounted, setIsMounted] = useState(false);
+  
+  // Reactions system
+  const {
+    addReaction,
+    removeReaction,
+    toggleFavorite,
+    getReactions,
+    isFavorited,
+  } = useMessageReactions();
+
+  // Track if component is mounted (client-side)
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
 
   const isUser = message.sender === MessageSender.USER;
   const isAI = message.sender === MessageSender.AI;
@@ -111,49 +129,59 @@ export function ChatMessage({
   };
 
   return (
-    <div className={cn(
-      "group flex gap-3 p-4 hover:bg-muted/50 transition-colors",
-      isUser && "flex-row-reverse",
-      isSystem && "justify-center"
-    )}>
-      {/* Avatar */}
-      {!isSystem && (
-        <div className="flex-shrink-0">
+    <div 
+      id={`message-${message.id}`}
+      className={cn(
+        "group flex gap-2 md:gap-3 p-2 md:p-4 hover:bg-muted/30 transition-all duration-200",
+        isUser && "flex-row-reverse",
+        isSystem && "justify-center"
+      )}
+    >
+      {/* Avatar - Hidden on mobile for cleaner look */}
+      {!isSystem && !isUser && (
+        <div className="flex-shrink-0 hidden md:block">
           {getAvatar()}
         </div>
       )}
       
       {/* Message Content */}
       <div className={cn(
-        "flex-1 space-y-2",
-        isUser && "text-right",
-        isSystem && "text-center max-w-md"
+        "flex flex-col space-y-1 max-w-[85%] md:max-w-[70%]",
+        isUser && "items-end",
+        isSystem && "items-center max-w-md mx-auto"
       )}>
-        {/* Header */}
-        <div className={cn(
-          "flex items-center gap-2 text-sm",
-          isUser && "justify-end"
-        )}>
-          {/* Sender Name */}
-          <span className="font-medium">
-            {isUser ? 'You' : isAI ? (message.model || 'AI') : 'System'}
-          </span>
-          
-          {/* Metadata */}
-          {message.metadata?.edited && (
-            <Badge variant="outline" className="text-xs">
-              Edited
-            </Badge>
-          )}
-          
-          {/* Status Icon */}
-          {getStatusIcon()}
-          
-          {/* Timestamp */}
-          <span className="text-xs text-muted-foreground">
-            {new Date(message.timestamp).toLocaleTimeString()}
-          </span>
-        </div>
+        {/* Header - Simplified for mobile */}
+        {!isSystem && (
+          <div className={cn(
+            "flex items-center gap-2 text-xs md:text-sm px-1",
+            isUser && "flex-row-reverse"
+          )}>
+            {/* Sender Name - Only show on desktop or for AI */}
+            {(!isUser || (isMounted && window.innerWidth >= 768)) && (
+              <span className="font-medium text-muted-foreground">
+                {isUser ? 'You' : isAI ? (message.model || 'AI') : 'System'}
+              </span>
+            )}
+            
+            {/* Metadata */}
+            {message.metadata?.edited && (
+              <Badge variant="outline" className="text-xs h-4">
+                Edited
+              </Badge>
+            )}
+            
+            {/* Timestamp */}
+            <span className="text-xs text-muted-foreground">
+              {new Date(message.timestamp).toLocaleTimeString([], { 
+                hour: '2-digit', 
+                minute: '2-digit' 
+              })}
+            </span>
+            
+            {/* Status Icon */}
+            {getStatusIcon()}
+          </div>
+        )}
         
         {/* Message Body */}
         <div className={cn(
@@ -181,45 +209,75 @@ export function ChatMessage({
               </div>
             </div>
           ) : (
-            // Display Mode
+            // Display Mode - WhatsApp-style bubbles
             <div className={cn(
-              "relative rounded-lg px-4 py-3 max-w-[80%]",
+              "relative rounded-2xl px-3 md:px-4 py-2 md:py-3 shadow-sm",
               isUser 
-                ? "bg-primary text-primary-foreground ml-auto" 
+                ? "bg-primary text-primary-foreground rounded-br-md" 
                 : isAI 
-                  ? "bg-secondary" 
-                  : "bg-muted text-muted-foreground",
-              message.status === 'error' && "border border-destructive"
+                  ? "bg-secondary rounded-bl-md" 
+                  : "bg-muted text-muted-foreground rounded-lg",
+              message.status === 'error' && "border border-destructive",
+              // Add subtle animation on appear
+              "animate-in scale-in-95 duration-200"
             )}>
               {/* Message Content */}
               <div className={cn(
-                "whitespace-pre-wrap break-words",
-                message.isStreaming && "after:content-['▋'] after:animate-pulse after:ml-1"
+                "whitespace-pre-wrap break-words text-sm md:text-base leading-relaxed",
+                message.isStreaming && "after:content-['▋'] after:animate-pulse after:ml-1 after:text-primary"
               )}>
                 {message.content || (message.isStreaming ? '' : 'No content')}
               </div>
               
-              {/* Cost Info for AI messages */}
+              {/* Cost Info for AI messages - Compact on mobile */}
               {isAI && message.metadata?.cost && (
-                <div className="text-xs text-muted-foreground mt-2 pt-2 border-t border-border/50">
-                  Cost: ${message.metadata.cost.toFixed(4)} • 
-                  Tokens: {message.metadata.tokensUsed || 0}
+                <div className="text-xs text-muted-foreground mt-2 pt-1 border-t border-border/30 opacity-70">
+                  <span className="hidden md:inline">
+                    Cost: ${message.metadata.cost.toFixed(4)} • Tokens: {message.metadata.tokensUsed || 0}
+                  </span>
+                  <span className="md:hidden">
+                    ${message.metadata.cost.toFixed(4)}
+                  </span>
                 </div>
               )}
             </div>
           )}
         </div>
         
-        {/* Actions */}
+        {/* Message Reactions */}
+        {!isEditing && !isSystem && (
+          <div className={cn(
+            "mt-2",
+            isUser && "flex justify-end"
+          )}>
+            <MessageReactions
+              messageId={message.id}
+              reactions={getReactions(message.id)}
+              onAddReaction={addReaction}
+              onRemoveReaction={removeReaction}
+              onToggleFavorite={toggleFavorite}
+              isFavorited={isFavorited(message.id)}
+              className="animate-in fade-in-50 duration-300"
+            />
+          </div>
+        )}
+        
+        {/* Actions - Mobile optimized */}
         {showActions && !isEditing && !isSystem && (
           <div className={cn(
-            "flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity",
-            isUser && "justify-end"
+            "flex gap-1 opacity-0 group-hover:opacity-100 md:group-hover:opacity-100 transition-all duration-200",
+            "md:opacity-0", // Hide by default on desktop, show on hover
+            isUser && "flex-row-reverse"
           )}>
             {/* Copy */}
-            <Button size="sm" variant="ghost" onClick={handleCopy}>
+            <Button 
+              size="sm" 
+              variant="ghost" 
+              onClick={handleCopy}
+              className="h-6 w-6 md:h-8 md:w-8 p-0 rounded-full bg-background/80 backdrop-blur-sm shadow-sm"
+            >
               {copied ? (
-                <Check className="h-3 w-3" />
+                <Check className="h-3 w-3 text-green-600" />
               ) : (
                 <Copy className="h-3 w-3" />
               )}
@@ -231,6 +289,7 @@ export function ChatMessage({
                 size="sm" 
                 variant="ghost" 
                 onClick={() => setIsEditing(true)}
+                className="h-6 w-6 md:h-8 md:w-8 p-0 rounded-full bg-background/80 backdrop-blur-sm shadow-sm"
               >
                 <Edit3 className="h-3 w-3" />
               </Button>
@@ -242,6 +301,7 @@ export function ChatMessage({
                 size="sm" 
                 variant="ghost" 
                 onClick={() => onRegenerate(message.id)}
+                className="h-6 w-6 md:h-8 md:w-8 p-0 rounded-full bg-background/80 backdrop-blur-sm shadow-sm"
               >
                 <RotateCcw className="h-3 w-3" />
               </Button>
@@ -253,6 +313,7 @@ export function ChatMessage({
                 size="sm" 
                 variant="ghost" 
                 onClick={() => onDelete(message.id)}
+                className="h-6 w-6 md:h-8 md:w-8 p-0 rounded-full bg-background/80 backdrop-blur-sm shadow-sm hover:bg-destructive/10 hover:text-destructive"
               >
                 <Trash2 className="h-3 w-3" />
               </Button>

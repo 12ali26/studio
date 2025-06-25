@@ -22,11 +22,18 @@ export function TestNavigation() {
             <span className="font-medium">Testing Mode</span>
           </div>
           
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
+            <Link href="/chat">
+              <Button variant="outline" size="sm">
+                <MessageSquare className="h-4 w-4 mr-2" />
+                AI Chat
+              </Button>
+            </Link>
+            
             <Link href="/boardroom">
               <Button variant="outline" size="sm">
                 <Users className="h-4 w-4 mr-2" />
-                Main Boardroom
+                Multi-AI Boardroom
               </Button>
             </Link>
             

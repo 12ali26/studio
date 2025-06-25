@@ -9,11 +9,13 @@ export default function BoardroomPage() {
       <div className="flex h-screen w-full flex-col">
         <Header />
         <main className="flex flex-1 flex-col overflow-hidden">
-          <div className="p-4">
+          <div className="p-4 flex justify-center">
             <TestNavigation />
           </div>
-          <div className="flex-1 overflow-hidden">
-            <EnhancedDebateView />
+          <div className="flex-1 overflow-hidden flex justify-center">
+            <div className="w-full max-w-7xl">
+              <EnhancedDebateView />
+            </div>
           </div>
         </main>
       </div>

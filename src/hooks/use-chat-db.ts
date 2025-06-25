@@ -9,7 +9,6 @@ import {
   type ChatConversation,
   type ChatEvent,
   type UseChatState,
-  type AIModelKey,
 } from '@/types/chat';
 
 // Default chat configuration
@@ -21,8 +20,8 @@ const DEFAULT_CONFIG: ChatConfig = {
   userId: 'default-user',
 };
 
-// Custom hook for single AI chat state management
-export function useChatState(initialConfig?: Partial<ChatConfig>): UseChatState {
+// Database-enabled chat state hook
+export function useChatDB(initialConfig?: Partial<ChatConfig>): UseChatState {
   // Core state
   const [status, setStatus] = useState<ChatStatus>(ChatStatus.IDLE);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -45,32 +44,91 @@ export function useChatState(initialConfig?: Partial<ChatConfig>): UseChatState 
   // Generate unique IDs
   const generateId = () => `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   
-  // Load conversation from localStorage (client-side only)
-  const loadStoredConversations = useCallback(() => {
-    if (typeof window === 'undefined') return {};
+  // API utility functions
+  const apiCall = async (url: string, options: RequestInit = {}) => {
+    const response = await fetch(url, {
+      ...options,
+      headers: {
+        'Content-Type': 'application/json',
+        ...options.headers,
+      },
+    });
     
+    if (!response.ok) {
+      throw new Error(`API error: ${response.status}`);
+    }
+    
+    return response.json();
+  };
+  
+  // Load conversations from database
+  const loadConversations = useCallback(async (userId: string) => {
     try {
-      const stored = localStorage.getItem('chat_conversations');
-      return stored ? JSON.parse(stored) : {};
-    } catch {
-      return {};
+      const result = await apiCall(`/api/conversations?userId=${userId}&limit=50`);
+      return result.conversations || [];
+    } catch (error) {
+      console.error('Failed to load conversations:', error);
+      return [];
     }
   }, []);
   
-  // Save conversation to localStorage (client-side only)
-  const saveConversationToStorage = useCallback((conversation: ChatConversation) => {
-    if (typeof window === 'undefined') return;
-    
+  // Create new conversation in database
+  const createConversationInDB = useCallback(async (title: string, config: ChatConfig) => {
     try {
-      const stored = loadStoredConversations();
-      stored[conversation.id] = conversation;
-      localStorage.setItem('chat_conversations', JSON.stringify(stored));
+      const result = await apiCall('/api/conversations', {
+        method: 'POST',
+        body: JSON.stringify({
+          userId: config.userId,
+          title,
+          config: {
+            model: config.model,
+            temperature: config.temperature,
+            maxTokens: config.maxTokens,
+            systemPrompt: config.systemPrompt,
+          },
+        }),
+      });
+      return result.conversation;
     } catch (error) {
-      console.error('Failed to save conversation:', error);
+      console.error('Failed to create conversation:', error);
+      throw error;
     }
-  }, [loadStoredConversations]);
+  }, []);
   
-  // Add message to chat
+  // Load conversation with messages from database
+  const loadConversationFromDB = useCallback(async (conversationId: string, userId: string) => {
+    try {
+      const [conversationResult, messagesResult] = await Promise.all([
+        apiCall(`/api/conversations/${conversationId}?userId=${userId}`),
+        apiCall(`/api/messages?conversationId=${conversationId}&includeReactions=true`)
+      ]);
+      
+      const conversation = conversationResult.conversation;
+      const dbMessages = messagesResult.messages || [];
+      
+      // Convert database messages to chat messages
+      const chatMessages: ChatMessage[] = dbMessages.map((msg: any) => ({
+        id: msg.id,
+        sender: msg.sender === 'user' ? MessageSender.USER : MessageSender.AI,
+        content: msg.content,
+        timestamp: msg.createdAt,
+        status: msg.status,
+        model: msg.model,
+        metadata: msg.metadata,
+        reactions: msg.reactions || [],
+      }));
+      
+      return {
+        conversation,
+        messages: chatMessages,
+      };
+    } catch (error) {
+      console.error('Failed to load conversation from DB:', error);
+      throw error;
+    }
+  }, []);
+  
+  // Add message to chat (for UI updates)
   const addMessage = useCallback((messageData: Omit<ChatMessage, 'id'>) => {
     const message: ChatMessage = {
       ...messageData,
@@ -101,16 +159,18 @@ export function useChatState(initialConfig?: Partial<ChatConfig>): UseChatState 
         
       case 'message-start':
         setIsTyping(true);
-        // Create pending AI message
-        const messageId = addMessage({
+        // For database mode, we'll use the message ID from the database
+        streamingMessageRef.current = event.data.messageId;
+        // Add placeholder message for UI
+        setMessages(prev => [...prev, {
+          id: event.data.messageId,
           sender: MessageSender.AI,
           content: '',
           timestamp: new Date().toISOString(),
           status: 'streaming',
           isStreaming: true,
           model: event.data.model,
-        });
-        streamingMessageRef.current = messageId;
+        }]);
         break;
         
       case 'message-chunk':
@@ -159,27 +219,29 @@ export function useChatState(initialConfig?: Partial<ChatConfig>): UseChatState 
         setStatus(ChatStatus.ACTIVE);
         break;
     }
-  }, [addMessage, updateMessage]);
+  }, [updateMessage]);
   
-  // Send message to AI
+  // Send message to AI (with database integration)
   const sendMessage = useCallback(async (content: string) => {
-    if (!content.trim() || status === ChatStatus.CONNECTING) {
+    if (!content.trim() || status === ChatStatus.CONNECTING || !currentConversation) {
       return;
     }
     
     try {
-      // Add user message
-      const userMessageId = addMessage({
+      // Add user message to UI immediately
+      const userMessage: ChatMessage = {
+        id: generateId(),
         sender: MessageSender.USER,
         content: content.trim(),
         timestamp: new Date().toISOString(),
         status: 'completed',
-      });
+      };
       
+      setMessages(prev => [...prev, userMessage]);
       setStatus(ChatStatus.CONNECTING);
       setError(null);
       
-      // Prepare messages for API
+      // Prepare messages for API (include conversation history)
       const apiMessages = [
         ...(config.systemPrompt ? [{ role: 'system', content: config.systemPrompt }] : []),
         ...messages.map(msg => ({
@@ -192,7 +254,7 @@ export function useChatState(initialConfig?: Partial<ChatConfig>): UseChatState 
       // Create abort controller
       controllerRef.current = new AbortController();
       
-      // Start streaming chat
+      // Start streaming chat with database integration
       const response = await fetch('/api/chat-stream', {
         method: 'POST',
         headers: {
@@ -203,6 +265,8 @@ export function useChatState(initialConfig?: Partial<ChatConfig>): UseChatState 
           model: config.model,
           temperature: config.temperature,
           max_tokens: config.maxTokens,
+          conversationId: currentConversation.id,
+          userId: config.userId,
         }),
         signal: controllerRef.current.signal,
       });
@@ -253,47 +317,61 @@ export function useChatState(initialConfig?: Partial<ChatConfig>): UseChatState 
       setStatus(ChatStatus.ERROR);
       setError(error instanceof Error ? error.message : 'Failed to send message');
     }
-  }, [status, addMessage, messages, config, handleChatEvent]);
+  }, [status, messages, config, currentConversation, handleChatEvent]);
   
-  // Regenerate last AI message
-  const regenerateMessage = useCallback(async (messageId: string) => {
-    const messageIndex = messages.findIndex(msg => msg.id === messageId);
-    if (messageIndex === -1 || messages[messageIndex].sender !== MessageSender.AI) {
-      return;
+  // Load conversation by ID
+  const loadConversation = useCallback(async (conversationId: string) => {
+    try {
+      setStatus(ChatStatus.CONNECTING);
+      const result = await loadConversationFromDB(conversationId, config.userId);
+      
+      setCurrentConversation({
+        id: result.conversation.id,
+        title: result.conversation.title,
+        messages: result.messages,
+        createdAt: result.conversation.createdAt,
+        updatedAt: result.conversation.updatedAt,
+        config: result.conversation.config,
+        userId: result.conversation.userId,
+      });
+      
+      setMessages(result.messages);
+      setConfig(prev => ({ ...prev, ...result.conversation.config }));
+      setStatus(ChatStatus.ACTIVE);
+    } catch (error) {
+      console.error('Failed to load conversation:', error);
+      setError('Failed to load conversation');
+      setStatus(ChatStatus.ERROR);
     }
-    
-    // Find the user message that prompted this AI response
-    const userMessageIndex = messageIndex - 1;
-    if (userMessageIndex < 0 || messages[userMessageIndex].sender !== MessageSender.USER) {
-      return;
-    }
-    
-    // Remove the AI message and regenerate
-    setMessages(prev => prev.filter(msg => msg.id !== messageId));
-    await sendMessage(messages[userMessageIndex].content);
-  }, [messages, sendMessage]);
+  }, [config.userId, loadConversationFromDB]);
   
-  // Edit message (user messages only)
-  const editMessage = useCallback((messageId: string, newContent: string) => {
-    const message = messages.find(msg => msg.id === messageId);
-    if (!message || message.sender !== MessageSender.USER) {
-      return;
+  // Create new conversation
+  const createNewConversation = useCallback(async (title?: string) => {
+    try {
+      const conversationTitle = title || `Chat ${new Date().toLocaleDateString()}`;
+      const conversation = await createConversationInDB(conversationTitle, config);
+      
+      setCurrentConversation({
+        id: conversation.id,
+        title: conversation.title,
+        messages: [],
+        createdAt: conversation.createdAt,
+        updatedAt: conversation.updatedAt,
+        config: conversation.config,
+        userId: conversation.userId,
+      });
+      
+      setMessages([]);
+      setStatus(ChatStatus.ACTIVE);
+      setError(null);
+      
+      return conversation;
+    } catch (error) {
+      console.error('Failed to create conversation:', error);
+      setError('Failed to create conversation');
+      throw error;
     }
-    
-    updateMessage(messageId, {
-      content: newContent,
-      metadata: { 
-        ...message.metadata, 
-        edited: true, 
-        originalContent: message.content 
-      },
-    });
-  }, [messages, updateMessage]);
-  
-  // Delete message
-  const deleteMessage = useCallback((messageId: string) => {
-    setMessages(prev => prev.filter(msg => msg.id !== messageId));
-  }, []);
+  }, [config, createConversationInDB]);
   
   // Clear current chat
   const clearChat = useCallback(() => {
@@ -309,58 +387,34 @@ export function useChatState(initialConfig?: Partial<ChatConfig>): UseChatState 
     streamingMessageRef.current = null;
   }, []);
   
-  // Load conversation by ID
-  const loadConversation = useCallback(async (conversationId: string) => {
-    try {
-      const stored = loadStoredConversations();
-      const conversation = stored[conversationId];
-      
-      if (conversation) {
-        setCurrentConversation(conversation);
-        setMessages(conversation.messages);
-        setConfig(conversation.config);
-      }
-    } catch (error) {
-      console.error('Failed to load conversation:', error);
-      setError('Failed to load conversation');
-    }
-  }, [loadStoredConversations]);
-  
-  // Save current conversation
+  // Save current conversation (not needed with database integration)
   const saveConversation = useCallback(async () => {
-    if (messages.length === 0) return;
-    
-    const conversation: ChatConversation = {
-      id: currentConversation?.id || generateId(),
-      title: currentConversation?.title || `Chat ${new Date().toLocaleDateString()}`,
-      messages,
-      createdAt: currentConversation?.createdAt || new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      config,
-      userId: config.userId || 'default-user',
-    };
-    
-    setCurrentConversation(conversation);
-    saveConversationToStorage(conversation);
-  }, [messages, currentConversation, config, saveConversationToStorage]);
+    // This is handled automatically by the database integration
+    return Promise.resolve();
+  }, []);
   
-  // Create new conversation
-  const createNewConversation = useCallback(() => {
-    clearChat();
-    setCurrentConversation(null);
-  }, [clearChat]);
+  // Regenerate message (placeholder - would need to implement)
+  const regenerateMessage = useCallback(async (messageId: string) => {
+    // TODO: Implement regeneration with database integration
+    console.log('Regenerate message:', messageId);
+  }, []);
+  
+  // Edit message (placeholder - would need to implement)
+  const editMessage = useCallback((messageId: string, newContent: string) => {
+    // TODO: Implement editing with database integration
+    console.log('Edit message:', messageId, newContent);
+  }, []);
+  
+  // Delete message (placeholder - would need to implement)
+  const deleteMessage = useCallback((messageId: string) => {
+    // TODO: Implement deletion with database integration
+    setMessages(prev => prev.filter(msg => msg.id !== messageId));
+  }, []);
   
   // Update configuration
   const updateConfig = useCallback((newConfig: Partial<ChatConfig>) => {
     setConfig(prev => ({ ...prev, ...newConfig }));
   }, []);
-  
-  // Auto-save conversation when messages change
-  useEffect(() => {
-    if (messages.length > 0) {
-      saveConversation();
-    }
-  }, [messages, saveConversation]);
   
   // Cleanup on unmount
   useEffect(() => {
@@ -405,5 +459,8 @@ export function useChatState(initialConfig?: Partial<ChatConfig>): UseChatState 
     // Connection
     isConnected,
     connectionError,
+    
+    // Additional database functions
+    loadConversations: () => loadConversations(config.userId),
   };
 }

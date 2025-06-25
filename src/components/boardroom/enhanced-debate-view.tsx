@@ -164,7 +164,8 @@ export function EnhancedDebateView() {
     <div className="flex h-full flex-col">
       {/* Header with status and controls */}
       <div className="border-b bg-card p-4">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-center">
+          <div className="w-full max-w-6xl flex items-center justify-between">
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2">
               <div className={`h-3 w-3 rounded-full ${statusDisplay.color}`} />
@@ -217,16 +218,20 @@ export function EnhancedDebateView() {
             )}
           </div>
         </div>
+        </div>
 
         {/* Progress bar for active debates */}
         {(status === DebateStatus.ACTIVE || status === DebateStatus.PAUSED) && (
-          <div className="mt-3">
-            <Progress value={progress} className="h-2" />
+          <div className="mt-3 flex justify-center">
+            <div className="w-full max-w-6xl">
+              <Progress value={progress} className="h-2" />
+            </div>
           </div>
         )}
       </div>
 
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex flex-1 overflow-hidden justify-center">
+        <div className="w-full max-w-6xl flex flex-1 overflow-hidden">
         {/* Sidebar with debate setup */}
         <div className="w-80 border-r bg-muted/50 p-4">
           <Tabs defaultValue="setup" className="h-full">
@@ -424,7 +429,7 @@ export function EnhancedDebateView() {
                 <div className="flex flex-col items-center justify-center py-12 text-center">
                   <MessageSquare className="h-12 w-12 text-muted-foreground mb-4" />
                   <h3 className="text-lg font-medium mb-2">Ready to Start a Debate</h3>
-                  <p className="text-muted-foreground max-w-md">
+                  <p className="text-muted-foreground max-w-md mx-auto">
                     Configure your debate settings in the sidebar and start a multi-AI business discussion.
                   </p>
                 </div>
@@ -456,6 +461,7 @@ export function EnhancedDebateView() {
               <div ref={messagesEndRef} />
             </div>
           </ScrollArea>
+        </div>
         </div>
       </div>
     </div>

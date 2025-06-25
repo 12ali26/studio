@@ -31,7 +31,9 @@ export interface ChatMessage {
     regenerated?: boolean;
     edited?: boolean;
     originalContent?: string;
+    model?: string;
   };
+  reactions?: any[];
 }
 
 // Chat configuration for AI model settings
@@ -89,7 +91,10 @@ export interface UseChatState {
   // Conversation management
   loadConversation: (conversationId: string) => Promise<void>;
   saveConversation: () => Promise<void>;
-  createNewConversation: () => void;
+  createNewConversation: (title?: string) => Promise<any>;
+  
+  // Additional database functions
+  loadConversations?: () => Promise<any[]>;
   
   // Configuration
   updateConfig: (newConfig: Partial<ChatConfig>) => void;

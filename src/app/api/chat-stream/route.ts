@@ -1,4 +1,6 @@
 import { NextRequest } from 'next/server';
+import { MessageQueries, ConversationQueries, UsageTrackingQueries } from '@/lib/db/queries';
+import { getStackUser } from '@/lib/auth/stack-auth';
 
 export const runtime = 'edge';
 
@@ -7,12 +9,102 @@ const API_KEY = process.env.OPENROUTER_API_KEY;
 
 export async function POST(req: NextRequest) {
   try {
-    const { messages, model, temperature = 0.7, max_tokens = 500 } = await req.json();
-
+    // Validate environment variables
     if (!API_KEY) {
-      return new Response('OpenRouter API key not configured', { status: 500 });
+      console.error('OPENROUTER_API_KEY is not configured');
+      return new Response(
+        JSON.stringify({ error: 'OpenRouter API key not configured' }), 
+        { 
+          status: 500,
+          headers: { 'Content-Type': 'application/json' }
+        }
+      );
     }
 
+    // Parse and validate request body
+    let requestBody;
+    try {
+      requestBody = await req.json();
+    } catch (parseError) {
+      console.error('Failed to parse request body:', parseError);
+      return new Response(
+        JSON.stringify({ error: 'Invalid request body' }), 
+        { 
+          status: 400,
+          headers: { 'Content-Type': 'application/json' }
+        }
+      );
+    }
+
+    const { messages, model, temperature = 0.7, max_tokens = 500, conversationId } = requestBody;
+    
+    // Get authenticated user from Stack Auth
+    const stackUser = await getStackUser(req);
+    if (!stackUser) {
+      return new Response(
+        JSON.stringify({ error: 'Authentication required' }), 
+        { 
+          status: 401,
+          headers: { 'Content-Type': 'application/json' }
+        }
+      );
+    }
+    
+    // Get user ID from our database using Stack Auth email
+    let userId = requestBody.userId;
+    if (!userId && stackUser.primaryEmail) {
+      try {
+        const response = await fetch(`${req.headers.get('origin') || 'http://localhost:3000'}/api/users?email=${encodeURIComponent(stackUser.primaryEmail)}`);
+        if (response.ok) {
+          const userData = await response.json();
+          userId = userData.user?.id;
+        }
+      } catch (error) {
+        console.error('Error fetching user from database:', error);
+      }
+    }
+
+    // Validate required fields
+    if (!messages || !Array.isArray(messages) || messages.length === 0) {
+      return new Response(
+        JSON.stringify({ error: 'Messages array is required' }), 
+        { 
+          status: 400,
+          headers: { 'Content-Type': 'application/json' }
+        }
+      );
+    }
+
+    if (!model || typeof model !== 'string') {
+      return new Response(
+        JSON.stringify({ error: 'Model is required' }), 
+        { 
+          status: 400,
+          headers: { 'Content-Type': 'application/json' }
+        }
+      );
+    }
+
+    // Create user message in database first
+    let userMessage = null;
+    let aiMessage = null;
+    
+    if (conversationId && userId && messages.length > 0) {
+      const lastMessage = messages[messages.length - 1];
+      if (lastMessage.role === 'user') {
+        try {
+          userMessage = await MessageQueries.createMessage({
+            conversationId,
+            sender: 'user',
+            content: lastMessage.content,
+            status: 'completed'
+          });
+        } catch (dbError) {
+          console.error('Failed to save user message:', dbError);
+        }
+      }
+    }
+    
     // Create a unique message ID for tracking
     const messageId = `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
@@ -32,11 +124,26 @@ export async function POST(req: NextRequest) {
           })}\n\n`)
         );
 
+        // Create AI message in database
+        if (conversationId) {
+          try {
+            aiMessage = await MessageQueries.createMessage({
+              conversationId,
+              sender: 'ai',
+              content: '',
+              status: 'streaming',
+              model
+            });
+          } catch (dbError) {
+            console.error('Failed to create AI message:', dbError);
+          }
+        }
+
         // Send message start event
         await writer.write(
           encoder.encode(`data: ${JSON.stringify({
             type: 'message-start',
-            data: { messageId, model }
+            data: { messageId: aiMessage?.id || messageId, model }
           })}\n\n`)
         );
 
@@ -46,15 +153,15 @@ export async function POST(req: NextRequest) {
           headers: {
             'Content-Type': 'application/json',
             Authorization: `Bearer ${API_KEY}`,
-            'HTTP-Referer': 'https://consensusai.app',
-            'X-Title': 'ConsensusAI',
+            'HTTP-Referer': req.headers.get('origin') || 'http://localhost:9002',
+            'X-Title': 'ConsensusAI Chat',
           },
           body: JSON.stringify({
             model,
             messages,
             stream: true,
-            temperature,
-            max_tokens,
+            temperature: Number(temperature) || 0.7,
+            max_tokens: Number(max_tokens) || 500,
           }),
         });
 
@@ -86,12 +193,40 @@ export async function POST(req: NextRequest) {
                 const data = line.slice(6);
                 
                 if (data === '[DONE]') {
+                  // Update AI message in database with final content
+                  if (aiMessage && fullContent) {
+                    try {
+                      await MessageQueries.updateMessage(aiMessage.id, {
+                        content: fullContent,
+                        status: 'completed',
+                        metadata: { tokensUsed: tokenCount, model }
+                      });
+                      
+                      // Record usage tracking
+                      if (userId && tokenCount > 0) {
+                        await UsageTrackingQueries.recordUsage({
+                          userId,
+                          messageId: aiMessage.id,
+                          model,
+                          tokensUsed: tokenCount,
+                          cost: (tokenCount * 0.0001).toString(), // Rough estimate
+                          metadata: {
+                            provider: 'openrouter',
+                            requestType: 'chat_completion'
+                          }
+                        });
+                      }
+                    } catch (dbError) {
+                      console.error('Failed to update AI message:', dbError);
+                    }
+                  }
+                  
                   // Send final message complete event
                   await writer.write(
                     encoder.encode(`data: ${JSON.stringify({
                       type: 'message-complete',
                       data: { 
-                        messageId, 
+                        messageId: aiMessage?.id || messageId, 
                         content: fullContent,
                         metadata: { tokensUsed: tokenCount, model }
                       }
@@ -113,7 +248,7 @@ export async function POST(req: NextRequest) {
                     await writer.write(
                       encoder.encode(`data: ${JSON.stringify({
                         type: 'message-chunk',
-                        data: { messageId, chunk: contentChunk }
+                        data: { messageId: aiMessage?.id || messageId, chunk: contentChunk }
                       })}\n\n`)
                     );
                   }
@@ -138,19 +273,27 @@ export async function POST(req: NextRequest) {
       } catch (error) {
         console.error('Streaming error:', error);
         
-        // Send error event
-        await writer.write(
-          encoder.encode(`data: ${JSON.stringify({
-            type: 'error',
-            data: { 
-              message: error instanceof Error ? error.message : 'Unknown streaming error',
-              messageId,
-              timestamp: new Date().toISOString()
-            }
-          })}\n\n`)
-        );
+        try {
+          // Send error event
+          await writer.write(
+            encoder.encode(`data: ${JSON.stringify({
+              type: 'error',
+              data: { 
+                message: error instanceof Error ? error.message : 'Unknown streaming error',
+                messageId: aiMessage?.id || messageId,
+                timestamp: new Date().toISOString()
+              }
+            })}\n\n`)
+          );
+        } catch (writeError) {
+          console.error('Failed to write error to stream:', writeError);
+        }
       } finally {
-        await writer.close();
+        try {
+          await writer.close();
+        } catch (closeError) {
+          console.error('Failed to close writer:', closeError);
+        }
       }
     })();
 

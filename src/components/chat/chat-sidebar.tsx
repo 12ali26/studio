@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
-import { ScrollArea } from '@/components/ui/scroll-area';
+// import { ScrollArea } from '@/components/ui/scroll-area';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { type ChatConversation } from '@/types/chat';
@@ -35,8 +35,10 @@ export function ChatSidebar({
   const [searchTerm, setSearchTerm] = useState('');
   const [filteredConversations, setFilteredConversations] = useState<ChatConversation[]>([]);
 
-  // Load conversations from localStorage
+  // Load conversations from localStorage (client-side only)
   const loadConversations = () => {
+    if (typeof window === 'undefined') return;
+    
     try {
       const stored = localStorage.getItem('chat_conversations');
       if (stored) {
@@ -88,9 +90,11 @@ export function ChatSidebar({
     };
   }, []);
 
-  // Delete conversation
+  // Delete conversation (client-side only)
   const handleDeleteConversation = (conversationId: string, e: React.MouseEvent) => {
     e.stopPropagation();
+    
+    if (typeof window === 'undefined') return;
     
     try {
       const stored = localStorage.getItem('chat_conversations');
@@ -161,7 +165,7 @@ export function ChatSidebar({
       </div>
 
       {/* Conversations List */}
-      <ScrollArea className="flex-1">
+      <div className="flex-1 overflow-y-auto overflow-x-hidden">
         <div className="p-2 space-y-1">
           {filteredConversations.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
@@ -230,7 +234,7 @@ export function ChatSidebar({
             ))
           )}
         </div>
-      </ScrollArea>
+      </div>
       
       {/* Footer */}
       <div className="p-4 border-t text-xs text-muted-foreground">
