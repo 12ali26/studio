@@ -67,30 +67,25 @@ export function StackUserProvider({ children }: StackUserProviderProps) {
       return null;
     }
 
-    try {
-      // Use API to create/get user
-      const response = await fetch('/api/users', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          email: stackUserData.primaryEmail,
-          name: stackUserData.displayName,
-          avatarUrl: stackUserData.profileImageUrl || undefined,
-        }),
-      });
+    const baseUrl = typeof window !== 'undefined' ? window.location.origin : '';
+    const response = await fetch(`${baseUrl}/api/users`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        email: stackUserData.primaryEmail,
+        name: stackUserData.displayName,
+        avatarUrl: stackUserData.profileImageUrl || undefined,
+      }),
+    });
 
-      if (!response.ok) {
-        throw new Error('Failed to sync user to database');
-      }
-
-      const result = await response.json();
-      return result.user;
-    } catch (err) {
-      console.error('Error syncing user to database:', err);
-      throw err;
+    if (!response.ok) {
+      throw new Error('Failed to sync user to database');
     }
+
+    const result = await response.json();
+    return result.user;
   };
 
   // Load user when Stack Auth user changes

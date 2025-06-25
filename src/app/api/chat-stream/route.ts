@@ -54,7 +54,7 @@ export async function POST(req: NextRequest) {
     let userId = requestBody.userId;
     if (!userId && stackUser.primaryEmail) {
       try {
-        const response = await fetch(`${req.headers.get('origin') || 'http://localhost:3000'}/api/users?email=${encodeURIComponent(stackUser.primaryEmail)}`);
+        const response = await fetch(`${req.headers.get('origin') || 'http://localhost:9002'}/api/users?email=${encodeURIComponent(stackUser.primaryEmail)}`);
         if (response.ok) {
           const userData = await response.json();
           userId = userData.user?.id;
