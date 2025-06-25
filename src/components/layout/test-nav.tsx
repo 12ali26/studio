@@ -23,13 +23,6 @@ export function TestNavigation() {
           </div>
           
           <div className="flex gap-2 flex-wrap">
-            <Link href="/chat">
-              <Button variant="outline" size="sm">
-                <MessageSquare className="h-4 w-4 mr-2" />
-                AI Chat
-              </Button>
-            </Link>
-            
             <Link href="/boardroom">
               <Button variant="outline" size="sm">
                 <Users className="h-4 w-4 mr-2" />
@@ -54,7 +47,7 @@ export function TestNavigation() {
         </div>
         
         <div className="mt-3 text-sm text-muted-foreground">
-          Authentication is disabled for testing. Use the buttons above to test different features.
+          Authentication is required for the main chat page. Use the buttons above to test other features.
         </div>
       </CardContent>
     </Card>
