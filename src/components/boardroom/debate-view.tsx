@@ -235,9 +235,9 @@ export function DebateView() {
           </div>
         </ScrollArea>
       </div>
-      <div className="px-4">
-        <Separator className="my-4" />
-        <div className="mx-auto max-w-2xl">
+      <div className="flex justify-center px-4">
+        <div className="w-full max-w-2xl">
+          <Separator className="my-4" />
           <div className="mb-4">
               <Label htmlFor="model-select" className="mb-2 block">Select AI Model</Label>
               <Select value={selectedModel} onValueChange={setSelectedModel} disabled={isLoading}>
