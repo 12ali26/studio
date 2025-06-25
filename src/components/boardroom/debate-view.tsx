@@ -237,79 +237,81 @@ export function DebateView() {
       </div>
       <div className="px-4">
         <Separator className="my-4" />
-        <div className="mb-4">
-            <Label htmlFor="model-select" className="mb-2 block">Select AI Model</Label>
-            <Select value={selectedModel} onValueChange={setSelectedModel} disabled={isLoading}>
-                <SelectTrigger id="model-select" className="w-full md:w-1/2">
-                    <SelectValue placeholder="Select a model" />
-                </SelectTrigger>
-                <SelectContent>
-                    {['Premium', 'Standard', 'Budget'].map(category => 
-                        modelCategories[category] && (
-                            <SelectGroup key={category}>
-                                <SelectLabel>{category}</SelectLabel>
-                                {modelCategories[category].map(model => (
-                                    <SelectItem key={model.id} value={model.id}>
-                                      <div className="flex items-center justify-between w-full">
-                                          <span>{model.name}</span>
-                                          <span className="text-xs text-muted-foreground ml-4">
-                                            {model.pricing.prompt ? `$${(parseFloat(model.pricing.prompt) * 1000).toFixed(4)}/1k` : ''}
-                                          </span>
-                                      </div>
-                                    </SelectItem>
-                                ))}
-                            </SelectGroup>
-                        )
-                    )}
-                </SelectContent>
-            </Select>
+        <div className="mx-auto max-w-2xl">
+          <div className="mb-4">
+              <Label htmlFor="model-select" className="mb-2 block">Select AI Model</Label>
+              <Select value={selectedModel} onValueChange={setSelectedModel} disabled={isLoading}>
+                  <SelectTrigger id="model-select" className="w-full">
+                      <SelectValue placeholder="Select a model" />
+                  </SelectTrigger>
+                  <SelectContent>
+                      {['Premium', 'Standard', 'Budget'].map(category => 
+                          modelCategories[category] && (
+                              <SelectGroup key={category}>
+                                  <SelectLabel>{category}</SelectLabel>
+                                  {modelCategories[category].map(model => (
+                                      <SelectItem key={model.id} value={model.id}>
+                                        <div className="flex items-center justify-between w-full">
+                                            <span>{model.name}</span>
+                                            <span className="text-xs text-muted-foreground ml-4">
+                                              {model.pricing.prompt ? `$${(parseFloat(model.pricing.prompt) * 1000).toFixed(4)}/1k` : ''}
+                                            </span>
+                                        </div>
+                                      </SelectItem>
+                                  ))}
+                              </SelectGroup>
+                          )
+                      )}
+                  </SelectContent>
+              </Select>
+          </div>
+          <form
+              ref={formRef}
+              onSubmit={handleSubmit}
+              className="relative overflow-hidden rounded-lg border bg-background focus-within:ring-1 focus-within:ring-ring"
+          >
+              <Textarea
+              id="message"
+              placeholder="Enter a topic to debate, e.g., 'Should we invest in quantum computing?'"
+              className="min-h-12 resize-none border-0 p-3 shadow-none focus-visible:ring-0"
+              value={input}
+              onChange={handleInputChange}
+              onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault();
+                      formRef.current?.requestSubmit();
+                  }
+              }}
+              disabled={isLoading}
+              />
+              <div className="flex items-center p-3 pt-0">
+              <TooltipProvider>
+                  <Tooltip>
+                  <TooltipTrigger asChild>
+                      <Button variant="ghost" size="icon" disabled>
+                      <Paperclip className="h-4 w-4" />
+                      <span className="sr-only">Attach file</span>
+                      </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="top">Attach File</TooltipContent>
+                  </Tooltip>
+                  <Tooltip>
+                  <TooltipTrigger asChild>
+                      <Button variant="ghost" size="icon" disabled>
+                      <Mic className="h-4 w-4" />
+                      <span className="sr-only">Use Microphone</span>
+                      </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="top">Use Microphone</TooltipContent>
+                  </Tooltip>
+              </TooltipProvider>
+              <Button type="submit" size="sm" className="ml-auto gap-1.5" disabled={isLoading || !input.trim()}>
+                  {isLoading ? 'Generating...' : 'Start Debate'}
+                  <Send className="h-3.5 w-3.5" />
+              </Button>
+              </div>
+          </form>
         </div>
-        <form
-            ref={formRef}
-            onSubmit={handleSubmit}
-            className="relative overflow-hidden rounded-lg border bg-background focus-within:ring-1 focus-within:ring-ring"
-        >
-            <Textarea
-            id="message"
-            placeholder="Enter a topic to debate, e.g., 'Should we invest in quantum computing?'"
-            className="min-h-12 resize-none border-0 p-3 shadow-none focus-visible:ring-0"
-            value={input}
-            onChange={handleInputChange}
-            onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault();
-                    formRef.current?.requestSubmit();
-                }
-            }}
-            disabled={isLoading}
-            />
-            <div className="flex items-center p-3 pt-0">
-            <TooltipProvider>
-                <Tooltip>
-                <TooltipTrigger asChild>
-                    <Button variant="ghost" size="icon" disabled>
-                    <Paperclip className="h-4 w-4" />
-                    <span className="sr-only">Attach file</span>
-                    </Button>
-                </TooltipTrigger>
-                <TooltipContent side="top">Attach File</TooltipContent>
-                </Tooltip>
-                <Tooltip>
-                <TooltipTrigger asChild>
-                    <Button variant="ghost" size="icon" disabled>
-                    <Mic className="h-4 w-4" />
-                    <span className="sr-only">Use Microphone</span>
-                    </Button>
-                </TooltipTrigger>
-                <TooltipContent side="top">Use Microphone</TooltipContent>
-                </Tooltip>
-            </TooltipProvider>
-            <Button type="submit" size="sm" className="ml-auto gap-1.5" disabled={isLoading || !input.trim()}>
-                {isLoading ? 'Generating...' : 'Start Debate'}
-                <Send className="h-3.5 w-3.5" />
-            </Button>
-            </div>
-        </form>
       </div>
     </div>
   )
